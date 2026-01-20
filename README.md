@@ -127,7 +127,7 @@ Se está na raiz:
 ```bash
 docker compose up -d vault
 ```
-# 3) Inicializar/Configurar Vault
+## 3) Inicializar/Configurar Vault
 
 - unseal (quando aplicável)
 
@@ -137,9 +137,9 @@ docker compose up -d vault
 
 - policy/approle (se usado por vault-agent)
 
-# 4) Subir as aplicações (terceiro)
+## 4) Subir as aplicações (terceiro)
 
-# 4.1 Aplicação Node (pasta app/)
+## 4.1 Aplicação Node (pasta app/)
 
 Compose separado:
 
@@ -155,7 +155,7 @@ docker compose up -d --build app
 
 Acesso: http://localhost:<porta_publicada_no_compose>/
 
-# 4.2 Aplicação Python (pasta python/)
+## 4.2 Aplicação Python (pasta python/)
 
 Build e run manual (exemplo padrão do lab):
 
