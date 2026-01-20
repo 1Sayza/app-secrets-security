@@ -1,5 +1,7 @@
 # Vault Lab (PostgreSQL + Vault + Apps)
 
+<img width="750" height="750" alt="vault" src="https://github.com/user-attachments/assets/60cfa2be-0f68-42f2-a94f-d0e4e43ffcf3" />
+
 Laboratório com PostgreSQL, HashiCorp Vault (TLS) e duas aplicações:
 
 - App Node (web) em app/
