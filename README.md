@@ -15,25 +15,51 @@ O objetivo é demonstrar um fluxo seguro onde a aplicação obtém credenciais d
 
 ```bash
 vault-lab/
-├── docker-compose.yml docker-compose-postgres.yml docker-compose-app.yml
-├── vault/
-│   ├── config/
-│   │   └── vault.hcl
-│   ├── scripts/
-│   │   └── init-vault.sh
-│   ├── data/
-│   └── tls/
-├── db/
-│   └── init.sql
-├── app/                       # aplicação Node (web)
+├── app/                          # Aplicação Web (Node.js)
 │   ├── Dockerfile
-│   ├── package.json
+│   ├── index.html
 │   ├── index.js
-│   └── index.html
-└── python/                    # aplicação Python (Flask)
-    ├── Dockerfile
-    ├── requirements.txt
-    └── app.py
+│   └── package.json
+│
+├── python/                       # Aplicação Python (Flask)
+│   ├── Dockerfile
+│   ├── app.py
+│   ├── requirements.txt
+│   └── docker-compose-python.yml
+│
+├── db/                           # Bootstrap do banco (PostgreSQL)
+│   └── init.sql
+│
+├── vault/                        # Vault (config, dados, TLS e scripts)
+│   ├── config/
+│   │   ├── vault.hcl             # Config do Vault (listener TLS + storage)
+│   │   └── vault-agent.hcl       # Config do Vault Agent (AppRole + CA)
+│   │
+│   ├── scripts/
+│   │   └── init-vault.sh         # Script de bootstrap (mount database, role, policy, approle)
+│   │
+│   ├── tls/                      # Certificados TLS (CA + cert do Vault)
+│   │   ├── ca.crt
+│   │   ├── ca.key
+│   │   ├── ca.srl
+│   │   ├── vault.crt
+│   │   ├── vault.csr
+│   │   ├── vault.ext
+│   │   └── vault.key
+│   │
+│   ├── agent/                    # Arquivos do AppRole + token gerado pelo agent
+│   │   ├── role_id               # AppRole RoleID
+│   │   ├── secret_id             # AppRole SecretID
+│   │   └── token                 # Token gerado (sink) para a aplicação ler
+│   │
+│   └── data/                     # Storage persistente do Vault (não versionar)
+│
+├── docker-compose-postgres.yml   # Compose do PostgreSQL
+├── docker-compose-vault.yml      # Compose do Vault
+├── docker-compose-vault-agent.yml# Compose do Vault Agent
+├── docker-compose-web.yml        # Compose da aplicação Node (web)
+└── docker-compose.yml            # (opcional) Compose raiz (se você usar tudo em um só)
+
 ```
 - Observação: dentro de vault/ eu mantenho composes separados (DB, Vault e App). A ordem de subida é sempre DB → Vault → App(s).
 
