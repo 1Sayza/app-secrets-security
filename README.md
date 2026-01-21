@@ -1,4 +1,4 @@
-# Vault Lab (PostgreSQL + Vault + Apps)
+# Vault Lab (Vault → Postgres → Role dinâmico → Agent → App)
 
 <img width="750" height="750" alt="vault" src="https://github.com/user-attachments/assets/60cfa2be-0f68-42f2-a94f-d0e4e43ffcf3" />
 
