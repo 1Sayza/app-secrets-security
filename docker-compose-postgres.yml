@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: sara_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+    # opcional, mas ajuda a garantir que esteja ouvindo na rede
+    command: ["postgres", "-c", "listen_addresses=*"]
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    networks:
+      vaultlab-net:
+        aliases:
+          - postgres
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sara_db -h 127.0.0.1 -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+    name: postgres-data
+
+networks:
+  vaultlab-net:
+    external: true
+    name: vaultlab-net
+

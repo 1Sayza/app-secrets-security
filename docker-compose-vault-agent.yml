@@ -1,0 +1,23 @@
+services:
+  vault-agent:
+    image: hashicorp/vault:1.15
+    container_name: vault-agent
+    restart: unless-stopped
+
+    environment:
+      VAULT_CACERT: /vault/tls/ca.crt
+
+    volumes:
+      - ./vault/agent:/vault/agent:rw
+      - ./vault/config:/vault/config:ro
+      - ./vault/tls:/vault/tls:ro
+
+    command: agent -config=/vault/config/vault-agent.hcl
+
+    networks:
+      - vaultlab-net
+
+networks:
+  vaultlab-net:
+    external: true
+

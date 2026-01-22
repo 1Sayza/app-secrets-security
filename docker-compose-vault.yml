@@ -1,0 +1,20 @@
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./vault/config:/vault/config
+      - ./vault/tls:/vault/tls
+      - ./vault/data:/vault/data
+    command: vault server -config=/vault/config/vault.hcl
+    networks:
+      - vault-net
+
+networks:
+  vault-net:
+    external: true
+
