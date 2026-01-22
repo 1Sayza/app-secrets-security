@@ -1,0 +1,22 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+*.env
+
+# Vault - NÃO subir segredos/dados/certs
+vault/data/
+vault/tls/
+vault/**/secret_id
+vault/**/role_id
+vault/**/token
+vault/bootstrap/*pass*
+vault/bootstrap/*password*
+vault/bootstrap/*secret*
