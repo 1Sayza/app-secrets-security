@@ -20,3 +20,9 @@ vault/**/token
 vault/bootstrap/*pass*
 vault/bootstrap/*password*
 vault/bootstrap/*secret*
+gitlab-runner/
+vault/data/
+vault/tls/
+vault/agent/
+vault/tls/
+vault/agent/
