@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
-docker compose -f python/docker-compose-python.yml config >/dev/null
+echo "Validando arquivos docker-compose do projeto..."
 
-echo "Arquivo docker-compose da aplicação Python validado com sucesso."
+docker compose -f docker-compose-postgres.yml config >/dev/null
+docker compose -f docker-compose-vault.yml config >/dev/null
+docker compose -f docker-compose-vault-agent.yml config >/dev/null
+
+echo "Arquivos docker-compose principais validados com sucesso."
