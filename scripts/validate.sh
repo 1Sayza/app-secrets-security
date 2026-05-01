@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 docker compose -f python/docker-compose-python.yml config >/dev/null
