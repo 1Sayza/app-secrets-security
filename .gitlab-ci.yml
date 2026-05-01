@@ -1,3 +1,5 @@
+image: docker:24
+
 stages:
   - validate
   - build
@@ -7,12 +9,15 @@ stages:
 variables:
   DOCKER_HOST: unix:///var/run/docker.sock
 
+before_script:
+  - apk add --no-cache curl
+  - chmod +x scripts/*.sh
+
 validate_python:
   stage: validate
   tags:
     - local-docker
   script:
-    - chmod +x scripts/*.sh
     - ./scripts/validate.sh
 
 build_python:
