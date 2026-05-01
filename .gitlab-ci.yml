@@ -1,0 +1,37 @@
+stages:
+  - validate
+  - build
+  - deploy
+  - test
+
+variables:
+  DOCKER_HOST: unix:///var/run/docker.sock
+
+validate_python:
+  stage: validate
+  tags:
+    - local-docker
+  script:
+    - chmod +x scripts/*.sh
+    - ./scripts/validate.sh
+
+build_python:
+  stage: build
+  tags:
+    - local-docker
+  script:
+    - docker compose -f python/docker-compose-python.yml build
+
+deploy_python:
+  stage: deploy
+  tags:
+    - local-docker
+  script:
+    - ./scripts/deploy-python.sh
+
+test_python:
+  stage: test
+  tags:
+    - local-docker
+  script:
+    - ./scripts/test-python.sh
