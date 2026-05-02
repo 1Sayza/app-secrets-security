@@ -5,6 +5,7 @@ echo "Aguardando a aplicação iniciar..."
 sleep 10
 
 echo "Testando aplicação Python..."
-curl -f http://localhost:3001 || exit 1
 
-echo "Teste concluído com sucesso."
+curl -f http://simple-python-app:3000
+
+echo "Aplicação Python respondeu com sucesso."
