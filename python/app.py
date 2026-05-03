@@ -1,12 +1,11 @@
 import os
 import logging
 import traceback
-from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Tuple, Optional
 
+import requests
 import psycopg2
 from flask import Flask, request, render_template_string
-
 import bcrypt
 
 app = Flask(__name__)
@@ -32,54 +31,61 @@ LOGIN_HTML = """
 def env_true(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "y", "on")
 
-APP_DEBUG = env_true("APP_DEBUG", "0")                   # mostra detalhe do erro na tela (lab)
-ALLOW_PASSWORDLESS = env_true("ALLOW_PASSWORDLESS", "0")  # permite senha vazia (lab)
-ENV_FILE_PATH = os.getenv("DB_ENV_FILE", "/vault/agent/db.env")
+
+APP_DEBUG = env_true("APP_DEBUG", "0")
+ALLOW_PASSWORDLESS = env_true("ALLOW_PASSWORDLESS", "0")
+
+VAULT_ADDR = os.getenv("VAULT_ADDR", "https://vault:8200")
+VAULT_TOKEN_PATH = os.getenv("VAULT_TOKEN_PATH", "/vault/agent/token")
+VAULT_DB_CREDS_PATH = os.getenv("VAULT_DB_CREDS_PATH", "database/creds/app-db")
 
 logging.basicConfig(
     level=logging.DEBUG if APP_DEBUG else logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-# ---------- helpers ----------
-def parse_env_file(path: str) -> Dict[str, str]:
-    """
-    Lê arquivo estilo KEY=VALUE e retorna dict.
-    Ex: /vault/agent/db.env com DB_USER e DB_PASS.
-    """
-    p = Path(path)
-    if not p.exists():
-        return {}
 
-    out: Dict[str, str] = {}
-    for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip()
-    return out
-
-def get_db_creds() -> Tuple[str, str]:
+# ---------- Vault helpers ----------
+def get_vault_token() -> str:
     """
-    Preferência:
-    1) /vault/agent/db.env (atualiza sem precisar recriar container)
-    2) env vars (DB_USER/DB_PASS ou PGUSER/PGPASSWORD)
+    Lê apenas o token renovável gerado pelo Vault Agent.
+    A aplicação não lê mais /vault/agent/db.env.
     """
-    d = parse_env_file(ENV_FILE_PATH)
-
-    user = d.get("DB_USER") or d.get("PGUSER") or os.getenv("DB_USER") or os.getenv("PGUSER")
-    pwd = d.get("DB_PASS") or d.get("PGPASSWORD") or os.getenv("DB_PASS") or os.getenv("PGPASSWORD")
-
-    if not user or not pwd:
+    if not os.path.exists(VAULT_TOKEN_PATH):
         raise RuntimeError(
-            "Credenciais do Postgres não encontradas. "
-            "Esperado DB_USER/DB_PASS (ou PGUSER/PGPASSWORD) no /vault/agent/db.env ou env vars."
+            f"Token do Vault não encontrado em {VAULT_TOKEN_PATH}. "
+            "Verifique se o Vault Agent está rodando e montado no container da aplicação."
         )
-    return user, pwd
 
+    with open(VAULT_TOKEN_PATH, "r", encoding="utf-8") as file:
+        return file.read().strip()
+
+
+def get_dynamic_db_credentials() -> Tuple[str, str]:
+    """
+    Busca credenciais dinâmicas diretamente no Vault.
+    As credenciais ficam apenas em memória durante a execução da requisição.
+    """
+    token = get_vault_token()
+    url = f"{VAULT_ADDR}/v1/{VAULT_DB_CREDS_PATH}"
+
+    response = requests.get(
+        url,
+        headers={"X-Vault-Token": token},
+        timeout=10,
+        verify=os.getenv("REQUESTS_CA_BUNDLE", True)
+    )
+
+    response.raise_for_status()
+
+    data = response.json()["data"]
+
+    return data["username"], data["password"]
+
+
+# ---------- Database ----------
 def get_pg_conn():
-    db_user, db_pass = get_db_creds()
+    db_user, db_pass = get_dynamic_db_credentials()
 
     pg_host = os.getenv("PGHOST", "postgres")
     pg_port = int(os.getenv("PGPORT", "5432"))
@@ -94,59 +100,87 @@ def get_pg_conn():
         connect_timeout=5,
     )
 
+
+# ---------- Auth helpers ----------
 def verify_password(stored_hash: Optional[str], provided_password: str) -> bool:
     """
-    stored_hash no banco está em bcrypt ($2a$ / $2b$ / $2y$...)
+    O campo password no banco está em bcrypt: $2a$, $2b$ ou $2y$.
     """
     if stored_hash is None:
         return False
 
-    # senha vazia: só permite se ALLOW_PASSWORDLESS=1 e stored_hash está vazio
     if provided_password == "":
         return ALLOW_PASSWORDLESS and (stored_hash.strip() == "")
 
-    # bcrypt
     if stored_hash.startswith(("$2a$", "$2b$", "$2y$")):
         return bcrypt.checkpw(
             provided_password.encode("utf-8"),
             stored_hash.encode("utf-8")
         )
 
-    # fallback (não recomendado): comparação direta
     return stored_hash == provided_password
 
+
 def check_login(username: str, password: str) -> Tuple[bool, str]:
-    """
-    Retorna (ok, motivo)
-    motivo:
-      - "ok"
-      - "no_user"
-      - "bad_pass"
-    """
     conn = get_pg_conn()
+
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT password FROM public.users WHERE username = %s LIMIT 1;",
                 (username,)
             )
+
             row = cur.fetchone()
+
             if not row:
                 return False, "no_user"
 
             stored_hash = row[0]
+
             if verify_password(stored_hash, password):
                 return True, "ok"
+
             return False, "bad_pass"
+
     finally:
         conn.close()
+
 
 # ---------- routes ----------
 @app.route("/health", methods=["GET"])
 def health():
     conn = get_pg_conn()
     conn.close()
-    return {"status": "ok"}, 200
+
+    return {
+        "status": "ok",
+        "message": "Aplicação conectou ao banco usando credenciais dinâmicas do Vault"
+    }, 200
+
+
+@app.route("/users", methods=["GET"])
+def users():
+    conn = get_pg_conn()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, username FROM public.users ORDER BY id;")
+            rows = cur.fetchall()
+
+        result = []
+
+        for row in rows:
+            result.append({
+                "id": row[0],
+                "username": row[1]
+            })
+
+        return result, 200
+
+    finally:
+        conn.close()
+
 
 @app.route("/", methods=["GET", "POST"])
 def login():
@@ -156,17 +190,23 @@ def login():
 
         if not u:
             return render_template_string(
-                LOGIN_HTML, msg="Informe o usuário.", color="red", debug_detail=None
+                LOGIN_HTML,
+                msg="Informe o usuário.",
+                color="red",
+                debug_detail=None
             ), 400
 
         try:
             ok, why = check_login(u, p)
+
         except Exception:
             logging.exception("Erro no login")
+
             debug_detail = traceback.format_exc() if APP_DEBUG else None
+
             return render_template_string(
                 LOGIN_HTML,
-                msg="Erro interno (veja docker logs).",
+                msg="Erro interno ao autenticar. Veja os logs do container.",
                 color="red",
                 debug_detail=debug_detail
             ), 500
@@ -176,15 +216,26 @@ def login():
 
         if why == "no_user":
             return render_template_string(
-                LOGIN_HTML, msg="Login não existe", color="red", debug_detail=None
+                LOGIN_HTML,
+                msg="Login não existe",
+                color="red",
+                debug_detail=None
             ), 401
 
         return render_template_string(
-            LOGIN_HTML, msg="Senha incorreta", color="red", debug_detail=None
+            LOGIN_HTML,
+            msg="Senha incorreta",
+            color="red",
+            debug_detail=None
         ), 401
 
-    return render_template_string(LOGIN_HTML, msg=None, color="black", debug_detail=None)
+    return render_template_string(
+        LOGIN_HTML,
+        msg=None,
+        color="black",
+        debug_detail=None
+    )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
-
