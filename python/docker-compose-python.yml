@@ -21,8 +21,8 @@ services:
       APP_DEBUG: "1"
 
     volumes:
-      - ../vault/tls/ca.crt:/etc/ssl/certs/vault-ca.crt:ro
-      - ../vault/agent:/vault/agent:ro
+      - /home/sara/vault-lab/vault/tls/ca.crt:/etc/ssl/certs/vault-ca.crt:ro
+      - /home/sara/vault-lab/vault/agent/token:/vault/agent/token:ro
       - python-app-data:/data
 
     networks:
