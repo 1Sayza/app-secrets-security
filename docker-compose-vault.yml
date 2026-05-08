@@ -12,9 +12,9 @@ services:
       - ./vault/data:/vault/data
     command: vault server -config=/vault/config/vault.hcl
     networks:
-      - vault-net
+      - vaultlab-net
 
 networks:
-  vault-net:
+  vaultlab-net:
     external: true
 
