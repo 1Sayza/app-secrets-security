@@ -1,10 +1,9 @@
 # Vault Lab (Vault → Postgres → Role dinâmico → Agent → App)
 
-<img width="750" height="750" alt="vault" src="https://github.com/user-attachments/assets/60cfa2be-0f68-42f2-a94f-d0e4e43ffcf3" />
+<img width="1196" height="447" alt="image" src="https://github.com/user-attachments/assets/f1d0fa4c-6f9b-465a-a811-b479b3a196f7" />
 
-Laboratório com PostgreSQL, HashiCorp Vault (TLS) e duas aplicações:
 
-- App Node (web) em app/
+Laboratório com PostgreSQL, HashiCorp Vault (TLS) e uma aplicação:
 
 - App Python (Flask) em python/ (testada no ambiente)
 
@@ -69,60 +68,47 @@ Docker e Docker Compose (plugin docker compose)
 
 OpenSSL (para gerar certificados TLS do Vault)
 
-## 1) Subir o PostgreSQL (primeiro)
+Curl para Teste
 
-## 1.1 Subir o compose do banco
-
-Se você tem compose separado do Postgres:
+## 1) Clonar e entrar no projeto
 
 ```bash
-docker compose -f vault/docker-compose.postgres.yml up -d
+git clone <SEU_REPO>
+cd vault-lab
 ```
 
-Se o docker-compose.yml na raiz já contém o serviço:
-```bash
-docker compose up -d postgres
-```
-## 1.2 Verificar saúde do Postgres
+## 2) Criar a rede Docker (padronizada)
+
+Todos os containers devem estar na mesma rede para resolver vault, vault-agfent, aplicação e postgres por nome.
 
 ```bash
-docker ps
-docker logs --tail 100 postgres
-```
-## 1.3 Validar se o init.sql rodou
-
-```bash
-docker exec -it postgres psql -U postgres -d postgres -c "\l"
-docker exec -it postgres psql -U postgres -d sara_db -c "\dt app.*"
+docker network create vaultlab-net 2>/dev/null || true
 ```
 
-## 2) Subir e configurar o Vault com TLS (segundo)
+ ## 4) Gerar TLS do Vault (CA + certificado do servidor)
 
-## 2.1 Gerar certificados TLS (CA + cert do Vault)
-
-Crie/entre na pasta:
-
-- mkdir -p vault/tls
-- cd vault/tls
-
-Gere a CA:
+ Os arquivos ficam em vault/tls/.
 
 ```bash
-openssl genrsa -out ca.key 4096 openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 \
--subj "/C=BR/ST=RN/L=Natal/O=VaultLab/OU=DevSecOps/CN=VaultLab-CA" \
--out ca.crt
-```
+ mkdir -p vault/tls
+cd vault/tls
 
-Gere o cert do Vault com SAN para vault e 127.0.0.1:
+# CA
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 \
+  -subj "/C=BR/ST=RN/L=Natal/O=VaultLab/OU=DevSecOps/CN=VaultLab-CA" \
+  -out ca.crt
 
-```bash
+# Cert do Vault (com SAN)
 openssl genrsa -out vault.key 2048
 openssl req -new -key vault.key -subj "/CN=vault" -out vault.csr
 
 cat > vault.ext <<'EOF'
 authorityKeyIdentifier=keyid,issuer
-basicConstraints=CA:FALSE keyUsage=digitalSignature,keyEncipherment
-extendedKeyUsage=serverAuth subjectAltName=@alt_names
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=@alt_names
 
 [alt_names]
 DNS.1=vault
@@ -131,31 +117,52 @@ IP.1=127.0.0.1
 EOF
 
 openssl x509 -req -in vault.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
--out vault.crt -days 825 -sha256 -extfile vault.ext
-```
-Permissões recomendadas:
-```bash
-sudo chmod 600 vault.key ca.key
-sudo chmod 644 vault.crt ca.crt
-```
+  -out vault.crt -days 825 -sha256 -extfile vault.ext
 
-Volte para a raiz:
+sudo chmod 600 ca.key vault.key
+sudo chmod 644 ca.crt vault.crt vault.ext vault.csr ca.srl
 
 cd ../../
 
-## 2.2 Subir o Vault
+```
+```bash
+openssl x509 -in vault/tls/vault.crt -noout -text | grep -n "Subject Alternative Name" -A2
+```
+5) Subir o PostgreSQL (primeiro)
+   
+```bash 
+docker compose -f docker-compose-postgres.yml up -d
+```
+## 6) Conferir se o init.sql foi aplicado:
+```bash
+docker exec -it postgres psql -U postgres -d sara_db -c "\dt"
+```
+## 7) Subir o Vault (segundo)
+```bash
+docker compose -f docker-compose-vault.yml up -d
+```
+## 8) Testar health com CA:
+```bash
+curl --cacert vault/tls/ca.crt https://127.0.0.1:8200/v1/sys/health
+```
+## 9) Inicializar/configurar o Vault (Database Engine + roles)
 
-Se você tem compose separado do Vault:
+O script vault/scripts/init-vault.sh prepara:
+
+database/ secrets engine
+
+conexão do Vault com Postgres
+
+role app-db para credenciais dinâmicas
+
+policy e AppRole do vault-agent
 
 ```bash
-docker compose -f vault/docker-compose.vault.yml up -d
+vault/scripts/init-vault.sh
 ```
-Se está na raiz:
+Ou também podemos configurar manualmente dentro do container do vault 
 
-```bash
-docker compose up -d vault
-```
-## 3) Inicializar/Configurar Vault
+ Inicializar/Configurar Vault
 
 - unseal (quando aplicável)
 
@@ -165,50 +172,72 @@ docker compose up -d vault
 
 - policy/approle (se usado por vault-agent)
 
-## 4) Subir as aplicações (terceiro)
+## PASSO A PASSO CONFIGURANDO MANUALMENTE O VAULT
 
-## 4.1 Aplicação Node (pasta app/)
+- SEGUE OS PRINTS
 
-Compose separado:
+- OBS: OS TOKENS QUE APARECE SÃO APENAS DE LABORATÓRIO. 
+
+<img width="522" height="593" alt="image" src="https://github.com/user-attachments/assets/f4dc6469-ffe9-4b98-8b9b-9aecfa651ae8" />
+
+<img width="691" height="573" alt="image" src="https://github.com/user-attachments/assets/b6633392-ffa2-4f59-bed7-b6043855d41e" />
+
+<img width="789" height="667" alt="image" src="https://github.com/user-attachments/assets/ee6f8195-c6c6-4b9c-b4e0-3edf7d61f98c" />
+
+Se precisa desbloquear o vault usando os tokens que é gerado de início quando sobe o ambiente. No caso Unseal Key 1, 2, 3 e até o 5 gera. Guardar esses tokens gerados para quando necessitar subir o ambiente novamente. E também gera o Root token que é essencial para entrar
+no ambiente e realiza login via web. 
+
+
+
+## 10) Subir o Vault Agent (terceiro)
+
+O vault-agent autentica no Vault via AppRole e grava um token em vault/agent/token, que a aplicação lê em runtime.
 
 ```bash
-docker compose -f vault/docker-compose.app.yml up -d --build
+docker compose -f docker-compose-vault-agent.yml up -d
 ```
 
-Ou pela raiz:
-
 ```bash
-docker compose up -d --build app
+docker ps --filter "name=vault-agent"
+docker logs --tail 80 vault-agent
+docker exec -it vault-agent sh -lc 'ls -l /vault/agent/token && head -c 20 /vault/agent/token; echo'
 ```
 
-Acesso: http://localhost:<porta_publicada_no_compose>/
+## 11) Subir a aplicação Python (Flask) – opcional
 
-## 4.2 Aplicação Python (pasta python/)
-
-Build e run manual (exemplo padrão do lab):
+Entre na pasta python/ e suba com o compose específico:
 
 ```bash
-cd python
-docker build -t simple-python-app:1 .
-docker rm -f simple-python-app 2>/dev/null
+docker compose -f docker-compose-python.yml up -d --build
+```
+- Python: http://localhost:3001/ (ou a porta definida no compose)
 
-docker run -d --name simple-python-app --network vaultlab-net -p 3001:3000 \
-  -e VAULT_ADDR="https://vault:8200" \
-  -e REQUESTS_CA_BUNDLE="/etc/ssl/certs/vault-ca.crt" \
-  -v "$HOME/vault-lab/vault/tls/ca.crt:/etc/ssl/certs/vault-ca.crt:ro" \
-  -v "$HOME/vault-lab/vault/agent:/vault/agent:ro" \
-  -e PGHOST="postgres" \
-  -e PGDATABASE="sara_db" \
-  simple-python-app:1
+## 12) Testes do fluxo (App → Vault → DB)
 
-Acesso: http://localhost:3001/
+Testar se a app consegue buscar credenciais dinâmicas
 
-Teste login via terminal:
+```bash
+docker exec -it simple-python-app sh -lc 'python - <<PY
+import os, requests
+addr=os.environ.get("VAULT_ADDR", "https://vault:8200")
+tok=open("/vault/agent/token").read().strip()
+r=requests.get(f"{addr}/v1/database/creds/app-db", headers={"X-Vault-Token": tok}, timeout=5)
+print("status:", r.status_code)
+print(r.text[:200])
+PY'
+```
 
+## 13) Testar login via terminal (exemplo)
+
+Observação que precisa criar dentro do banco um usuário e senha para validar a busca dos objetos do banco e validar a funcionalidade da aplicação do banckend se comunicar com o vualt agent > vault > banco. 
+```bash
 curl -i -X POST http://localhost:3001/ \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  --data "username=<user>&password=<SUA_SENHA_CADASTRADA>"
+  --data "username=<SEU_USUARIO>&password=<SUA_SENHA>"
+```
 
-``` 
+
+
+
 
 
