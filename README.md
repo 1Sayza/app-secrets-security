@@ -1,308 +1,678 @@
-# Vault Lab (Vault → Postgres → Role dinâmico → Agent → App)
+# Implementação de Gestão de Segredos de Aplicações
 
-<img width="1491" height="1055" alt="vault-hashicorp" src="https://github.com/user-attachments/assets/3df69aac-8e1f-4883-b3a0-e4f904bcff81" />
+Este repositório apresenta uma prova de conceito desenvolvida para o Trabalho de Conclusão de Curso intitulado:
 
+**Implementação de Gestão de Segredos de Aplicações: Uma Prova de Conceito Usando a Solução HashiCorp Vault Integrada a Pipeline de Implantação de Sistemas Web Distribuídos**
 
-# Vault Lab - Gerenciamento Seguro de Secrets com CI/CD Local
+O objetivo deste projeto é demonstrar, de forma prática, como uma aplicação web pode acessar um banco de dados sem manter credenciais fixas no código-fonte, em arquivos de configuração ou em variáveis de ambiente expostas.
 
-Este projeto apresenta um laboratório local voltado à implementação de uma arquitetura segura para gerenciamento de secrets em aplicações, utilizando credenciais temporárias, autenticação centralizada e integração com pipeline de CI/CD local.
-
-O ambiente foi construído com foco em estudos práticos sobre proteção de credenciais, acesso seguro ao banco de dados e automação de deploy de aplicações, simulando um cenário de laboratório DevSecOps.
-
-Além disso, o projeto busca mostrar como separar corretamente:
-
-- a aplicação
-- a infraestrutura de secrets
-- o banco de dados
-- o fluxo de build e deploy
+Para isso, a solução utiliza o **HashiCorp Vault** como gerenciador centralizado de segredos, integrado ao **Vault Agent**, ao banco de dados **PostgreSQL**, a uma aplicação web e a uma estrutura de **pipeline CI/CD com GitLab e GitLab Runner**. O Vault é responsável por gerar credenciais dinâmicas e temporárias para acesso ao banco, enquanto a pipeline automatiza etapas de validação, implantação e testes da aplicação.
 
 ---
 
-## Arquitetura do laboratório
+## Objetivo do laboratório
 
-O laboratório é composto por quatro blocos principais:
+Este laboratório foi desenvolvido para validar uma abordagem segura de gerenciamento de segredos em aplicações web distribuídas.
 
-### 1. Aplicação Web
-Aplicação responsável por consumir credenciais temporárias e realizar operações no banco de dados.
+A proposta demonstra o seguinte fluxo:
 
-### 2. Gerenciador de Secrets
-Responsável por controlar autenticação, políticas de acesso e geração de credenciais temporárias.
+1. O desenvolvedor envia o código-fonte para o GitLab.
+2. A pipeline de CI/CD é acionada automaticamente.
+3. A pipeline executa etapas de validação, implantação e testes.
+4. A aplicação é implantada sem armazenar usuário e senha fixos do banco de dados.
+5. O Vault Agent autentica no HashiCorp Vault utilizando AppRole.
+6. A aplicação utiliza um token controlado para solicitar credenciais ao Vault.
+7. O Vault gera credenciais dinâmicas e temporárias no PostgreSQL.
+8. A aplicação utiliza essas credenciais para acessar o banco.
+9. Após o tempo de vida configurado, as credenciais expiram automaticamente.
 
-### 3. Banco de Dados
-Responsável por armazenar os dados da aplicação e aceitar conexões autorizadas com permissões limitadas.
+Com isso, o projeto demonstra a substituição do modelo tradicional baseado em credenciais estáticas por um modelo mais seguro, baseado em credenciais temporárias, automação e controle de acesso.
 
-### 4. Pipeline de CI/CD local
-Responsável por validar, buildar, publicar e testar a aplicação, sem acoplar o gerenciamento de secrets à etapa de build.
+---
+
+## Tecnologias utilizadas
+
+* HashiCorp Vault
+* Vault Agent
+* PostgreSQL
+* Docker
+* Docker Compose
+* GitLab
+* GitLab Runner
+* Pipeline CI/CD
+* Python Flask
+* OpenSSL
+* Linux/WSL
+
+---
+
+## Arquitetura da solução
+
+A arquitetura do laboratório é composta pelos seguintes elementos:
+
+* **GitLab:** utilizado como repositório de código-fonte e ponto de acionamento da pipeline.
+* **GitLab Runner:** responsável por executar os estágios definidos na pipeline.
+* **Pipeline CI/CD:** realiza as etapas de validação, implantação e teste da aplicação.
+* **Aplicação Web:** simula o consumo de dados protegidos no banco.
+* **Vault Agent:** realiza a autenticação automática no Vault utilizando AppRole.
+* **HashiCorp Vault:** gerencia políticas, autenticação e geração de credenciais dinâmicas.
+* **PostgreSQL:** banco de dados utilizado para validar o acesso com credenciais temporárias.
+* **Docker Compose:** utilizado para orquestrar os serviços do laboratório.
+
+Fluxo resumido da solução:
+
+```text
+Desenvolvedor
+      |
+      | Push do código
+      v
+GitLab
+      |
+      | Aciona pipeline
+      v
+GitLab Runner
+      |
+      | Validação / Deploy / Testes
+      v
+Aplicação Web
+      |
+      | Solicita credenciais
+      v
+Vault Agent
+      |
+      | Autentica via AppRole
+      v
+HashiCorp Vault
+      |
+      | Gera credenciais temporárias
+      v
+PostgreSQL
+```
 
 ---
 
 ## Estrutura do projeto
 
 ```text
-
 vault-lab/
-.
 ├── LICENSE
 ├── README.md
-├── app
-│   ├── Dockerfile
-│   ├── index.html
-│   ├── index.js
-│   └── package.json
-├── db
-│   └── init.sql
+├── app/
+│   ├── Dockerfile
+│   ├── index.html
+│   ├── index.js
+│   └── package.json
+│
+├── db/
+│   └── init.sql
+│
 ├── docker-compose-gitlab.yml
 ├── docker-compose-postgres.yml
 ├── docker-compose-vault-agent.yml
 ├── docker-compose-vault.yml
-├── gitlab-runner
-│   └── config
-│       └── config.toml
-├── python
-│   ├── Dockerfile
-│   ├── app.py
-│   ├── docker-compose-python.yml
-│   └── requirements.txt
-├── scripts
-│   ├── deploy-python.sh
-│   ├── test-python.sh
-│   └── validate.sh
-└── vault
-    ├── agent
-    │   ├── role_id
-    │   ├── secret_id
-    │   ├── templates
-    │   │   └── db.env.tpl
-    │   └── token
-    ├── config
-    │   ├── vault
-    │   │   └── agent
-    │   │       ├── secret_id
-    │   │       └── templates
-    │   │           └── db.env.tpl
-    │   ├── vault-agent.hcl
-    │   └── vault.hcl
-    ├── data [error opening dir]
-    ├── tls
-    │   ├── ca.crt
-    │   ├── ca.key
-    │   ├── ca.srl
-    │   ├── vault.crt
-    │   ├── vault.csr
-    │   ├── vault.ext
-    │   └── vault.key
-    └── vault
-        ├── config
-        ├── data
-        └── tls
-
+│
+├── gitlab-runner/
+│   └── config/
+│       └── config.toml
+│
+├── python/
+│   ├── Dockerfile
+│   ├── app.py
+│   ├── docker-compose-python.yml
+│   └── requirements.txt
+│
+├── scripts/
+│   ├── deploy-python.sh
+│   ├── test-python.sh
+│   └── validate.sh
+│
+└── vault/
+    ├── agent/
+    │   ├── role_id
+    │   ├── secret_id
+    │   ├── token
+    │   └── templates/
+    │       └── db.env.tpl
+    │
+    ├── config/
+    │   ├── vault-agent.hcl
+    │   └── vault.hcl
+    │
+    ├── data/
+    └── tls/
+        ├── ca.crt
+        ├── ca.key
+        ├── ca.srl
+        ├── vault.crt
+        ├── vault.csr
+        ├── vault.ext
+        └── vault.key
 ```
 
-Componentes do projeto
-app/
+---
 
-Contém uma aplicação web em Node.js usada no laboratório.
+## Descrição dos principais diretórios
 
-python/
+### `app/`
 
-Contém a aplicação Python, seu Dockerfile, dependências e o docker-compose próprio para deploy da aplicação.
+Contém uma aplicação web em Node.js utilizada nas etapas iniciais do laboratório. Essa aplicação representa um serviço web que pode ser implantado em ambiente distribuído.
 
-db/
+### `python/`
 
-Contém o script de inicialização do banco de dados.
+Contém a aplicação principal em Python Flask. Essa aplicação utiliza o token disponibilizado pelo Vault Agent para solicitar credenciais dinâmicas ao HashiCorp Vault e acessar o banco PostgreSQL.
 
-vault/
+### `db/`
 
-Contém arquivos de configuração, diretórios de dados, certificados TLS, arquivos do agente e templates de secrets.
+Contém o script `init.sql`, responsável pela criação inicial da base de dados, tabelas e permissões necessárias para o funcionamento do laboratório.
 
-scripts/
+### `vault/`
 
-Contém scripts auxiliares utilizados no pipeline de CI/CD local, como validação, deploy e testes da aplicação Python.
+Contém os arquivos relacionados ao HashiCorp Vault, incluindo configurações, certificados TLS, dados persistentes e arquivos utilizados pelo Vault Agent.
 
-docker-compose-*.yml
+### `gitlab-runner/`
 
+Contém a configuração do GitLab Runner, responsável por executar os jobs da pipeline CI/CD.
 
-## Arquivos separados para orquestração dos serviços do laboratório:
+### `scripts/`
 
-GitLab local
-banco de dados
-gerenciador de secrets
-agente de autenticação
-aplicação Python
+Contém scripts auxiliares utilizados pela pipeline:
 
-Tecnologias utilizadas
-Docker
-Docker Compose
-Linux Ubuntu
-GitLab CE local
-GitLab Runner
-Python
-PostgreSQL
-Gerenciamento seguro de secrets
-Bash Script
+* `validate.sh`: realiza validações iniciais do ambiente e dos arquivos necessários.
+* `deploy-python.sh`: executa o processo de implantação da aplicação Python.
+* `test-python.sh`: realiza testes para validar se a aplicação foi implantada corretamente.
 
+---
 
-## Fluxo do laboratório
+## Pipeline CI/CD
 
-O funcionamento do laboratório segue, de forma resumida, a seguinte lógica:
+A pipeline de CI/CD tem como objetivo automatizar o processo de validação, implantação e teste da aplicação.
 
-A aplicação solicita acesso ao banco de dados.
-O mecanismo de autenticação valida a identidade da aplicação.
-A solicitação autenticada é encaminhada ao gerenciador de secrets.
-A política de acesso é validada.
-São geradas credenciais temporárias para acesso ao banco.
-O banco cria um usuário temporário com permissões limitadas.
-As credenciais são retornadas à aplicação.
-A aplicação utiliza essas credenciais para acessar somente os recursos autorizados.
-Após o tempo de validade, o acesso temporário pode ser revogado.
+Ela representa uma etapa importante da prova de conceito, pois demonstra que a aplicação pode ser implantada de forma automatizada sem expor credenciais sensíveis diretamente no código-fonte ou nos arquivos da pipeline.
 
-## CI/CD local
+O fluxo da pipeline contempla três etapas principais:
 
-Neste laboratório, o CI/CD foi projetado para atuar apenas sobre a aplicação, mantendo o banco de dados, o mecanismo de autenticação e o gerenciador de secrets fora da pipeline principal.
+```text
+validate → deploy → test
+```
 
-A pipeline executa:
-validação da configuração da aplicação
-build da imagem da aplicação Python
-deploy da aplicação
-teste da aplicação após o deploy
-Infraestrutura mantida fora da pipeline:
-banco de dados
-gerenciador de secrets
-agente de autenticação
+### Etapa `validate`
 
-Essa separação permite um fluxo mais próximo de ambientes reais, onde a infraestrutura crítica permanece desacoplada da esteira de build da aplicação.
+Responsável por verificar se os arquivos necessários para a implantação estão presentes e se o ambiente possui a estrutura esperada.
 
-## Scripts do pipeline
+Exemplo de validações:
 
-scripts/validate.sh
+* presença dos arquivos da aplicação;
+* presença dos arquivos Docker;
+* presença dos scripts de implantação;
+* verificação básica da estrutura do projeto.
 
-Valida a sintaxe e a estrutura do docker-compose da aplicação Python.
+### Etapa `deploy`
 
-scripts/deploy-python.sh
+Responsável por realizar a implantação da aplicação Python utilizando Docker Compose.
 
-Executa o deploy da aplicação Python utilizando Docker Compose.
+Nessa etapa, a aplicação é publicada ou atualizada no ambiente, mantendo a lógica de acesso seguro aos segredos por meio do Vault.
 
-scripts/test-python.sh
+### Etapa `test`
 
-Executa testes básicos de disponibilidade da aplicação após o deploy.
+Responsável por validar se a aplicação está em execução corretamente após a implantação.
+
+Essa etapa pode incluir testes de disponibilidade, verificação de health check e validação do funcionamento básico da aplicação.
+
+---
+
+## Pré-requisitos
+
+Antes de executar o laboratório, é necessário possuir:
+
+* Docker instalado
+* Docker Compose instalado
+* OpenSSL instalado
+* Curl instalado
+* Git instalado
+* Ambiente Linux ou WSL no Windows
+
+---
 
 ## Como executar o laboratório
-1. Subir a infraestrutura principal
 
-Suba separadamente os serviços de infraestrutura:
+Esta seção apresenta o passo a passo para subir o ambiente do laboratório utilizando Docker, HashiCorp Vault, PostgreSQL, Vault Agent, aplicação Python e GitLab CI/CD.
 
+---
+
+### 1. Clonar o repositório
+
+Clone o repositório do projeto e acesse o diretório principal:
+
+```bash
+git clone https://github.com/1Sayza/app-secrets-security.git
+cd app-secrets-security
 ```
 
-docker compose -f docker-compose-vault.yml up -d
-docker compose -f docker-compose-vault-agent.yml up -d
+---
+
+### 2. Criar a rede Docker
+
+Antes de subir os containers, crie a rede Docker utilizada pelos serviços do laboratório:
+
+```bash
+docker network create vaultlab-net
+```
+
+Caso a rede já exista, você pode seguir para o próximo passo.
+
+---
+
+### 3. Subir o banco PostgreSQL
+
+O PostgreSQL será utilizado como banco de dados da aplicação.
+
+```bash
 docker compose -f docker-compose-postgres.yml up -d
-
-``` 
-
-2. Subir o GitLab local
-
 ```
+
+Verifique se o container está em execução:
+
+```bash
+docker ps
+```
+
+Se tudo estiver correto, o container do PostgreSQL será exibido na lista.
+
+---
+
+### 4. Subir o HashiCorp Vault
+
+Agora suba o container do HashiCorp Vault:
+
+```bash
+docker compose -f docker-compose-vault.yml up -d
+```
+
+Verifique se o container foi iniciado:
+
+```bash
+docker ps
+```
+
+Também é possível acompanhar os logs do Vault:
+
+```bash
+docker logs vault
+```
+
+---
+
+### 5. Inicializar e desbloquear o Vault
+
+Após iniciar o container do Vault, acesse o container:
+
+```bash
+docker exec -it vault sh
+```
+
+Configure as variáveis de ambiente dentro do container:
+
+```bash
+export VAULT_ADDR=https://127.0.0.1:8200
+export VAULT_CACERT=/vault/tls/ca.crt
+```
+
+Inicialize o Vault:
+
+```bash
+vault operator init
+```
+
+Esse comando irá gerar as **chaves de unseal** e o **token root**.
+
+> Guarde essas informações, pois elas serão necessárias para desbloquear e configurar o Vault.
+
+Agora desbloqueie o Vault utilizando três chaves de unseal:
+
+```bash
+vault operator unseal
+```
+
+Repita o comando três vezes, informando uma chave diferente em cada execução.
+
+Depois, faça login com o token root:
+
+```bash
+vault login
+```
+
+---
+
+### 6. Configurar o Vault para gerar credenciais do banco
+
+Habilite o mecanismo de segredos de banco de dados:
+
+```bash
+vault secrets enable database
+```
+
+Configure a conexão do Vault com o PostgreSQL:
+
+```bash
+vault write database/config/sara-db \
+  plugin_name=postgresql-database-plugin \
+  allowed_roles="app-db" \
+  connection_url="postgresql://{{username}}:{{password}}@postgres:5432/sara_db?sslmode=disable" \
+  username="vault_admin" \
+  password="vault_admin"
+```
+
+Crie a role responsável por gerar credenciais temporárias:
+
+```bash
+vault write database/roles/app-db \
+  db_name=sara-db \
+  creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT CONNECT ON DATABASE sara_db TO \"{{name}}\"; GRANT USAGE ON SCHEMA app TO \"{{name}}\"; GRANT SELECT ON ALL TABLES IN SCHEMA app TO \"{{name}}\";" \
+  default_ttl="1h" \
+  max_ttl="24h"
+```
+
+Teste se o Vault consegue gerar credenciais dinâmicas:
+
+```bash
+vault read database/creds/app-db
+```
+
+Se tudo estiver correto, o Vault irá retornar um usuário e uma senha temporários para acesso ao PostgreSQL.
+
+---
+
+### 7. Configurar autenticação AppRole
+
+Habilite o método de autenticação AppRole:
+
+```bash
+vault auth enable approle
+```
+
+Crie uma policy para permitir que a aplicação leia as credenciais dinâmicas:
+
+```bash
+vault policy write app-policy - <<EOF
+path "database/creds/app-db" {
+  capabilities = ["read"]
+}
+EOF
+```
+
+Crie a role da aplicação:
+
+```bash
+vault write auth/approle/role/app \
+  token_policies="app-policy" \
+  token_ttl="1h" \
+  token_max_ttl="4h"
+```
+
+Gere o `role_id`:
+
+```bash
+vault read -field=role_id auth/approle/role/app/role-id > /vault/agent/role_id
+```
+
+Gere o `secret_id`:
+
+```bash
+vault write -field=secret_id -f auth/approle/role/app/secret-id > /vault/agent/secret_id
+```
+
+Saia do container do Vault:
+
+```bash
+exit
+```
+
+---
+
+### 8. Subir o Vault Agent
+
+O Vault Agent será responsável por autenticar no Vault usando AppRole e gerar um token para a aplicação.
+
+```bash
+docker compose -f docker-compose-vault-agent.yml up -d
+```
+
+Verifique os logs do Vault Agent:
+
+```bash
+docker logs vault-agent
+```
+
+Verifique se o token foi criado:
+
+```bash
+docker exec -it vault-agent sh -c "ls -l /vault/agent/token"
+```
+
+Se o arquivo `token` existir, significa que o Vault Agent conseguiu autenticar corretamente no Vault.
+
+---
+
+### 9. Subir a aplicação Python
+
+Acesse o diretório da aplicação Python:
+
+```bash
+cd python
+```
+
+Suba a aplicação:
+
+```bash
+docker compose -f docker-compose-python.yml up -d --build
+```
+
+Verifique se o container está em execução:
+
+```bash
+docker ps
+```
+
+Acesse a aplicação no navegador:
+
+```text
+http://localhost:3001
+```
+
+---
+
+### 10. Testar a aplicação
+
+Teste o endpoint de saúde da aplicação:
+
+```bash
+curl http://localhost:3001/health
+```
+
+Se a aplicação estiver funcionando corretamente, ela deverá retornar uma resposta de sucesso.
+
+Também é possível testar se a aplicação consegue solicitar credenciais ao Vault:
+
+```bash
+docker exec -it simple-python-app sh -lc 'python - <<PY
+import requests
+
+tok = open("/vault/agent/token").read().strip()
+
+r = requests.get(
+    "https://vault:8200/v1/database/creds/app-db",
+    headers={"X-Vault-Token": tok},
+    verify="/vault/tls/ca.crt"
+)
+
+print(r.status_code)
+print(r.text)
+PY'
+```
+
+Se o retorno for `200`, significa que a aplicação conseguiu acessar o Vault e solicitar credenciais dinâmicas.
+
+---
+
+## Subindo o GitLab e executando a pipeline
+
+Além do ambiente com Vault, PostgreSQL e aplicação Python, o laboratório também possui integração com GitLab CI/CD.
+
+---
+
+### 1. Subir o GitLab
+
+Na raiz do projeto, execute:
+
+```bash
 docker compose -f docker-compose-gitlab.yml up -d
 ```
 
-3. Subir a aplicação Python
+Aguarde o GitLab iniciar completamente.
 
+Depois acesse no navegador:
+
+```text
+http://localhost:8081
 ```
-docker compose -f python/docker-compose-python.yml up -d --build
+
+---
+
+### 2. Acessar o GitLab
+
+No primeiro acesso, configure a senha do usuário administrador.
+
+Usuário padrão:
+
+```text
+root
 ```
-4. Verificar containers em execução
-   
+
+Depois, crie um novo projeto ou importe este repositório para dentro do GitLab local.
+
+---
+
+### 3. Registrar o GitLab Runner
+
+O GitLab Runner é responsável por executar os jobs da pipeline.
+
+A configuração do Runner fica no diretório:
+
+```text
+gitlab-runner/config/config.toml
 ```
-docker ps
+
+Após registrar o Runner no GitLab, verifique se ele aparece como disponível no projeto.
+
+---
+
+### 4. Executar a pipeline
+
+A pipeline utiliza os scripts presentes na pasta `scripts/`:
+
+```text
+scripts/
+├── validate.sh
+├── deploy-python.sh
+└── test-python.sh
 ```
-## GitLab local
 
-O laboratório também utiliza um GitLab local executando em container para testes de pipeline.
+O fluxo esperado da pipeline é:
 
-Portas utilizadas
-8081: acesso web ao GitLab
-8443: acesso HTTPS
-2222: acesso SSH
+```text
+validate → deploy → test
+```
 
+#### Etapa de validação
 
-Exemplo de uso do pipeline
+Verifica se os arquivos necessários existem e se a estrutura básica do projeto está correta.
 
-Após configurar o GitLab Runner e enviar o projeto ao repositório, a pipeline pode executar automaticamente:
+#### Etapa de deploy
 
-validação do compose da aplicação
-build da imagem
-deploy atualizado da aplicação Python
-teste de disponibilidade da aplicação
+Realiza a implantação da aplicação Python usando Docker Compose.
 
-Boas práticas adotadas
-separação entre aplicação e infraestrutura crítica
-não utilização de credenciais fixas diretamente no código
-uso de credenciais temporárias
-controle de acesso por política
-organização modular por serviço
-automação local para simular pipeline real
+#### Etapa de teste
 
-Observações importantes
-
-Este projeto foi desenvolvido com fins educacionais, laboratoriais e de estudo em segurança de aplicações, DevSecOps e gerenciamento seguro de credenciais.
-
-Por se tratar de um ambiente local, algumas configurações podem estar simplificadas em relação a um cenário de produção, especialmente em aspectos como:
-
-hardening do ambiente
-rotação avançada de certificados
-alta disponibilidade
-monitoramento
-segregação avançada de rede
-
-Possíveis evoluções do projeto
-adicionar testes automatizados mais completos
-expandir a pipeline para múltiplos ambientes
-integrar análise de segurança no CI/CD
-adicionar monitoramento e observabilidade
-implementar políticas mais refinadas de acesso
-evoluir o fluxo de revogação automática de credenciais
-
-
-## RESUMO DA PREPARAÇÃO DO AMBIENTE
-
-A estrutura do projeto foi organizada no diretório vault-lab, contendo os arquivos de composição dos serviços, a aplicação Python, os scripts de automação do pipeline, as configurações do Vault, os dados utilizados pelo Vault Agent e os arquivos do GitLab Runner. Entre os principais componentes do projeto estão os arquivos docker-compose-postgres.yml, docker-compose-vault.yml, docker-compose-vault-agent.yml e docker-compose-gitlab.yml, além dos diretórios python, scripts, vault e gitlab-runner. Essa organização permitiu separar as responsabilidades de cada serviço e facilitar a reprodução do ambiente.
-
-Inicialmente, foi criada uma rede Docker compartilhada para os contêineres do laboratório. Essa rede permite que a aplicação, o Vault, o Vault Agent, o PostgreSQL, o GitLab e o GitLab Runner se comuniquem internamente por nome de serviço, reduzindo a necessidade de exposição direta entre componentes. A rede utilizada no ambiente foi denominada vaultlab-net, sendo referenciada tanto no Docker Compose da aplicação Python quanto na configuração do GitLab Runner.
-
-Em seguida, foi iniciado o banco de dados PostgreSQL por meio do arquivo docker-compose-postgres.yml. Esse serviço é responsável por hospedar a base sara-db, utilizada pela aplicação para realizar consultas e autenticação de usuários. Durante a inicialização do banco, o ambiente utiliza um script de bootstrap localizado no diretório db, responsável por preparar as estruturas necessárias para o funcionamento da aplicação.
-
-Após a subida do banco de dados, foi iniciado o HashiCorp Vault utilizando o arquivo docker-compose-vault.yml. O Vault foi configurado com armazenamento local e comunicação via TLS, utilizando certificados presentes no diretório vault/tls. Os arquivos principais de configuração ficam no diretório vault/config, onde estão localizados os arquivos vault.hcl e vault-agent.hcl.
-
-Com o Vault em execução, foram configurados os mecanismos de segurança necessários para o laboratório. O Database Secrets Engine foi habilitado para permitir a geração dinâmica de credenciais de acesso ao PostgreSQL. Nesse processo, foram criadas roles de banco responsáveis por emitir usuários temporários com permissões restritas, tempo de vida controlado e revogação após o término do TTL.
-
-Além disso, foi configurado o método de autenticação AppRole, utilizado pelo Vault Agent para autenticar a aplicação no Vault. No ambiente, a role de autenticação foi associada à política app-policy e configurada com token periódico de 10 minutos. Esse token é renovável e permite que a aplicação solicite credenciais dinâmicas ao Vault sem armazenar credenciais administrativas no código-fonte.
-
-Depois da configuração do Vault, foi iniciado o Vault Agent por meio do arquivo docker-compose-vault-agent.yml. O Vault Agent utiliza os arquivos role-id e secret-id, armazenados no diretório vault/agent, para autenticação via AppRole. Como resultado, o agente gera um token renovável e o disponibiliza no caminho /vault/agent/token. Na estrutura atual, o diretório vault/agent contém os arquivos role-id, secret-id, templates e token, não sendo mais utilizado o arquivo db.env para expor usuário e senha do banco.
-
-A aplicação Python foi desenvolvida no diretório python, contendo os arquivos Dockerfile, app.py, docker-compose-python.yml e requirements.txt. A aplicação utiliza Flask para disponibilizar as rotas web, requests para comunicação com a API do Vault, psycopg2 para conexão com o PostgreSQL e bcrypt para validação de senhas armazenadas em formato de hash. Essas dependências foram declaradas no arquivo requirements.txt.
-
-Na versão aprimorada do laboratório, a aplicação deixou de utilizar o arquivo db.env. O arquivo docker-compose-python.yml passou a declarar apenas variáveis não sensíveis, como o endereço do Vault, o caminho do token, o caminho da role de credenciais dinâmicas, o certificado da CA e os dados básicos de conexão com o banco. Entre as variáveis utilizadas estão VAULT-ADDR, VAULT-TOKEN-PATH, VAULT-DB-CREDS-PATH, REQUESTS-A-BUNDLE, PGHOST, PGDATABASE e PGPORT.
-
-O arquivo docker-compose-python.yml também é responsável por montar, no contêiner da aplicação, o certificado da autoridade certificadora do Vault e o token disponibilizado pelo Vault Agent, ambos em modo somente leitura. Essa configuração permite que a aplicação estabeleça uma comunicação HTTPS confiável com o Vault e utilize o token de autenticação sem armazenar credenciais sensíveis em arquivos locais.
-
-Durante a execução, a aplicação lê o token disponível em /vault/agent/token e realiza uma chamada HTTP ao endpoint database/creds/app-db do Vault. Como resposta, são obtidos um usuário e uma senha temporários, empregados exclusivamente em memória para o estabelecimento da conexão com o PostgreSQL. Esse comportamento foi implementado no arquivo app.py, por meio das funções responsáveis pela leitura do token, pela solicitação das credenciais dinâmicas e pela abertura da conexão com o banco de dados.
-
-Embora o serviço do Vault possua seus próprios volumes para configuração, certificados e persistência de dados, a aplicação Python precisa declarar montagens específicas em seu próprio arquivo Docker Compose, uma vez que os volumes não são compartilhados automaticamente entre contêineres. Nesse contexto, o certificado da CA é montado para permitir a validação da conexão HTTPS com o Vault, enquanto o token gerado pelo Vault Agent é disponibilizado à aplicação em modo somente leitura, impedindo sua modificação. Dessa forma, a aplicação consegue autenticar suas requisições ao Vault e solicitar credenciais dinâmicas para acesso ao banco de dados, preservando o isolamento entre os serviços e reduzindo a exposição de segredos persistentes no ambiente da aplicação.
-
-O fluxo de funcionamento da aplicação ocorre da seguinte forma: inicialmente, a aplicação recebe uma requisição do usuário; em seguida, lê o token renovável gerado pelo Vault Agent; posteriormente, consulta o Vault para solicitar credenciais temporárias; na sequência, utiliza essas credenciais em memória para estabelecer a conexão com o PostgreSQL; por fim, executa a consulta necessária e encerra a conexão com o banco. Com isso, DB-USER e DB-PASS deixam de ser armazenados em arquivos, não são declarados diretamente no Docker Compose como segredos e não permanecem persistidos no ambiente da aplicação.
-
-Além da integração com o Vault, o laboratório também foi ampliado com a implantação de um GitLab local e de um GitLab Runner, com o objetivo de representar o processo de integração e entrega contínua da aplicação. O GitLab é iniciado por meio do arquivo docker-compose-gitlab.yml, enquanto o Runner utiliza o diretório gitlab-runner/config, no qual se encontra o arquivo config.toml. O Runner foi configurado com executor Docker, imagem docker:24, modo privilegiado, acesso ao Docker socket e conexão com a rede vaultlab-net, permitindo que os jobs executem comandos Docker e acessem os serviços internos do laboratório.
-
-O pipeline da aplicação utiliza scripts armazenados no diretório scripts. Foram criados três scripts principais: validate.sh, deploy-python.sh e test-python.sh. O script validate.sh é responsável por validar os arquivos Docker Compose principais do projeto. O script deploy-python.sh realiza o deploy da aplicação Python, executando a validação da configuração e iniciando o contêiner com processo de build. Por sua vez, o script test-python.sh aguarda a inicialização da aplicação e realiza um teste HTTP para verificar se o serviço respondeu corretamente.
-
-Essa automação permite que o GitLab CI/CD valide a estrutura do ambiente, construa a aplicação, realize o deploy e execute testes básicos de disponibilidade. Dessa forma, o laboratório passa a representar não apenas o uso seguro de credenciais dinâmicas, mas também a integração dessas práticas a um fluxo DevSecOps, aproximando o experimento de um cenário real de desenvolvimento e entrega contínua de aplicações.
-
-
-## Autor
-
-Sara Maria
-Profissional focada em Segurança da Informação, DevSecOps e proteção de aplicações.
+Valida se a aplicação subiu corretamente após o deploy.
 
 
 
+```bash
+curl -i http://localhost:3001/health
+```
 
+Ou acessar pelo navegador:
+
+```text
+http://localhost:3001
+```
+
+---
+
+## Resultado esperado
+
+Ao final da execução, espera-se que:
+
+* a aplicação não possua credenciais fixas do banco de dados;
+* o Vault Agent consiga autenticar no Vault via AppRole;
+* a aplicação consiga solicitar credenciais temporárias ao Vault;
+* o Vault gere usuários dinâmicos no PostgreSQL;
+* o acesso ao banco seja limitado por tempo de vida;
+* as credenciais expirem automaticamente após o TTL configurado;
+* a pipeline consiga validar, implantar e testar a aplicação;
+* o processo de implantação ocorra sem exposição direta de senhas do banco.
+
+Esse comportamento demonstra a aplicação prática de uma arquitetura segura para gerenciamento de segredos em aplicações web distribuídas.
+
+---
+
+## Relação com o TCC
+
+Este repositório representa a implementação prática da prova de conceito apresentada no Trabalho de Conclusão de Curso.
+
+A solução demonstra, de forma integrada, o uso do HashiCorp Vault para gerenciamento seguro de segredos em aplicações, considerando:
+
+* armazenamento centralizado de segredos;
+* geração dinâmica de credenciais;
+* redução da exposição de senhas fixas;
+* autenticação automatizada com Vault Agent;
+* integração entre aplicação, Vault, Vault Agent e banco de dados;
+* automação do processo de implantação com GitLab CI/CD;
+* aplicação do princípio do menor privilégio;
+* limitação do tempo de vida das credenciais.
+
+Dessa forma, o laboratório contribui para demonstrar como práticas de segurança podem ser incorporadas ao ciclo de implantação de aplicações, reduzindo riscos associados ao uso de credenciais estáticas em ambientes distribuídos.
+
+---
+
+## Aviso de segurança
+
+Este projeto foi desenvolvido exclusivamente para fins acadêmicos e de demonstração.
+
+Não é recomendado utilizar os tokens, certificados, senhas ou configurações deste laboratório diretamente em ambientes de produção.
+
+Em ambientes reais, recomenda-se:
+
+* não versionar tokens, chaves privadas ou arquivos sensíveis;
+* proteger `role_id`, `secret_id` e tokens do Vault Agent;
+* restringir permissões de acesso aos arquivos sensíveis;
+* utilizar certificados emitidos por uma autoridade confiável;
+* habilitar auditoria no Vault;
+* aplicar políticas de menor privilégio;
+* limitar o tempo de vida das credenciais;
+* proteger os dados persistentes do Vault;
+* restringir o acesso administrativo ao GitLab e ao GitLab Runner.
+
+---
+
+## Licença
+
+Este projeto está licenciado sob a licença MIT.
+
+---
+
+## Autora
+
+Desenvolvido por **Sara Maria** como parte do Trabalho de Conclusão de Curso no Instituto Federal do Rio Grande do Norte.
+
+Repositório: https://github.com/1Sayza/app-secrets-security
