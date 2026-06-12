@@ -9,12 +9,6 @@ Este projeto apresenta um laboratório local voltado à implementação de uma a
 
 O ambiente foi construído com foco em estudos práticos sobre proteção de credenciais, acesso seguro ao banco de dados e automação de deploy de aplicações, simulando um cenário de laboratório DevSecOps.
 
----
-
-## Objetivo
-
-O objetivo deste laboratório é demonstrar, de forma prática, como uma aplicação pode acessar um banco de dados sem armazenar credenciais fixas no código-fonte, utilizando um mecanismo de autenticação, geração dinâmica de credenciais e integração com pipeline local de CI/CD.
-
 Além disso, o projeto busca mostrar como separar corretamente:
 
 - a aplicação
